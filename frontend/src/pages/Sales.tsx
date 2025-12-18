@@ -8,9 +8,10 @@ import { useNavigate } from 'react-router-dom';
 interface Product {
   id: string;
   name: string;
-  price: string;
+  price: string | number;
   totalStock: number;
   barcode: string;
+  imageUrl?: string; // <--- Adicionado para suportar fotos manuais
 }
 
 interface CartItem extends Product {
@@ -53,14 +54,19 @@ export function Sales() {
 
     // 3. Buscar saldo atualizado do próprio usuário
     api.get(`/residents/${user.id}`).then(res => {
-      setMyBalance(Number(res.data.account.balance));
-    });
+      // Ajuste: verifica se existe account e balance, senão 0
+      setMyBalance(Number(res.data.account?.balance || 0));
+    }).catch(err => console.error("Erro ao buscar saldo", err));
 
-  }, []);
+  }, [navigate]);
 
   async function loadProducts() {
-    const res = await api.get('/products');
-    setProducts(res.data);
+    try {
+        const res = await api.get('/products');
+        setProducts(res.data);
+    } catch (error) {
+        console.error("Erro ao carregar produtos", error);
+    }
   }
 
   // --- FUNÇÕES DO CARRINHO ---
@@ -114,7 +120,7 @@ export function Sales() {
           quantity: item.quantity
         })),
         paymentType: paymentType,
-        residentId: currentUser.id, // <--- O PULO DO GATO: Usa o ID de quem tá logado!
+        residentId: currentUser.id, // Usa o ID de quem tá logado
       };
 
       await api.post('/sales', saleData);
@@ -124,12 +130,13 @@ export function Sales() {
       setCart([]); 
       loadProducts(); // Recarrega estoque
       
-      // Atualiza saldo visualmente
+      // Atualiza saldo visualmente (se for fiado, aumenta a dívida)
       if (paymentType === 'FIADO') {
         setMyBalance(prev => prev + total);
       }
 
     } catch (error) {
+      console.error(error);
       alert('Erro ao registrar compra. Tente novamente.');
     } finally {
       setLoading(false);
@@ -142,7 +149,7 @@ export function Sales() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] gap-4">
+    <div className="flex flex-col h-[calc(100vh-2rem)] gap-4 p-4 md:p-6 bg-slate-50">
       
       {/* --- CABEÇALHO DO MORADOR --- */}
       <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -157,13 +164,13 @@ export function Sales() {
                     {myBalance.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
                 </p>
             </div>
-            <div className="bg-blue-50 p-3 rounded-full text-blue-600">
+            <div className="bg-blue-50 p-3 rounded-full text-blue-600 shadow-sm border border-blue-100">
                 <Wallet size={24} />
             </div>
         </div>
       </div>
 
-      <div className="flex flex-1 gap-6 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 gap-6 overflow-hidden">
         {/* --- ESQUERDA: VITRINE --- */}
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
             
@@ -173,7 +180,7 @@ export function Sales() {
             <input 
                 type="text"
                 placeholder="O que você está procurando?"
-                className="flex-1 outline-none text-lg"
+                className="flex-1 outline-none text-lg text-slate-700 placeholder:text-slate-300"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -190,9 +197,14 @@ export function Sales() {
                     ${product.totalStock === 0 ? 'opacity-50 grayscale cursor-not-allowed' : 'border-slate-200 hover:border-blue-500'}`}
                 >
                 <div className="h-40 w-full bg-white relative p-4 flex items-center justify-center">
-                    <ProductThumbnail barcode={product.barcode} alt={product.name} />
+                    {/* 👇 AQUI: Passamos a URL manual se existir 👇 */}
+                    <ProductThumbnail 
+                        barcode={product.barcode} 
+                        alt={product.name} 
+                        src={product.imageUrl} 
+                    />
                     {product.totalStock > 0 && (
-                        <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                        <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-600 shadow-sm">
                         Restam {product.totalStock}
                         </span>
                     )}
@@ -215,7 +227,7 @@ export function Sales() {
         </div>
 
         {/* --- DIREITA: CARRINHO (CHECKOUT) --- */}
-        <div className="w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden shrink-0 h-full">
+        <div className="w-full md:w-80 lg:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden shrink-0 h-[60vh] md:h-full">
             <div className="p-5 bg-slate-900 text-white">
             <h2 className="text-lg font-bold flex items-center gap-2">
                 <ShoppingCart className="text-blue-400" /> Meu Carrinho
@@ -231,10 +243,14 @@ export function Sales() {
                 </div>
             ) : (
                 cart.map((item) => (
-                <div key={item.id} className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-slate-100">
+                <div key={item.id} className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-slate-100 animate-fade-in-right">
                     <div className="flex items-center gap-3 overflow-hidden">
                         <div className="font-bold bg-blue-100 text-blue-700 w-8 h-8 flex items-center justify-center rounded-lg text-sm shrink-0">
                             {item.quantity}
+                        </div>
+                        {/* Miniatura no carrinho com suporte a imagem */}
+                        <div className="w-10 h-10 shrink-0 hidden sm:block">
+                            <ProductThumbnail barcode={item.barcode} alt={item.name} src={item.imageUrl} />
                         </div>
                         <div className="min-w-0">
                             <p className="font-medium text-slate-700 text-sm truncate">{item.name}</p>
@@ -243,7 +259,7 @@ export function Sales() {
                             </p>
                         </div>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-full">
+                    <button onClick={() => removeFromCart(item.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-full transition-colors">
                         <Trash2 size={18} />
                     </button>
                 </div>
@@ -258,21 +274,21 @@ export function Sales() {
                 <div className="grid grid-cols-2 gap-2">
                     <button
                         onClick={() => setPaymentType('FIADO')}
-                        className={`py-3 rounded-lg text-sm font-bold border-2 transition-all
+                        className={`py-3 rounded-lg text-sm font-bold border-2 transition-all flex flex-col items-center justify-center gap-1
                         ${paymentType === 'FIADO' 
                             ? 'border-blue-600 bg-blue-50 text-blue-700' 
                             : 'border-slate-100 text-slate-400 hover:border-slate-300'}`}
                     >
-                        📝 Pendurar (Fiado)
+                        <span>📝</span> Pendurar
                     </button>
                     <button
                         onClick={() => setPaymentType('PIX')}
-                        className={`py-3 rounded-lg text-sm font-bold border-2 transition-all
+                        className={`py-3 rounded-lg text-sm font-bold border-2 transition-all flex flex-col items-center justify-center gap-1
                         ${paymentType === 'PIX' 
                             ? 'border-green-500 bg-green-50 text-green-700' 
                             : 'border-slate-100 text-slate-400 hover:border-slate-300'}`}
                     >
-                        💠 Pix / QR Code
+                         <span>💠</span> Pix / QR
                     </button>
                 </div>
             </div>
@@ -287,9 +303,9 @@ export function Sales() {
             <button 
                 onClick={handleCheckout}
                 disabled={loading || cart.length === 0}
-                className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg"
             >
-                {loading ? 'Registrando...' : '✅ Finalizar e Pegar'}
+                {loading ? 'Registrando...' : <><CheckCircle size={20} /> Finalizar e Pegar</>}
             </button>
             </div>
         </div>

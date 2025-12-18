@@ -25,4 +25,16 @@ export class CreateProductDto {
   @IsNumber()
   @IsOptional()
   minStock?: number;
+
+  // --- 👇 CAMPOS ADICIONADOS PARA EVITAR ERRO 400 👇 ---
+
+  @ApiPropertyOptional({ example: 'https://...', description: 'URL da Imagem' })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
+
+  @ApiPropertyOptional({ example: 100, description: 'Quantidade de Estoque Inicial' })
+  @IsNumber()
+  @IsOptional()
+  stock?: number;
 }

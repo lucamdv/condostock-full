@@ -16,6 +16,8 @@ export class ResidentsService {
   // --- 1. CRIAÇÃO PELO SÍNDICO (Cria um Titular Ativo) ---
   async create(createResidentDto: CreateResidentDto) {
     const cleanCpf = createResidentDto.cpf.replace(/\D/g, '');
+    
+    // Se não vier senha (DTO do frontend), gera padrão
     const defaultPassword = cleanCpf.substring(0, 4);
 
     const salt = await bcrypt.genSalt();
@@ -75,13 +77,10 @@ export class ResidentsService {
   }
 
   // --- 3. SÍNDICO APROVA (OU REJEITA) ---
-  // Unifiquei a lógica para facilitar o uso no Controller
   async updateStatus(id: string, status: AccessStatus) {
     const resident = await this.prisma.resident.findUnique({ where: { id } });
     if (!resident) throw new NotFoundException('Morador não encontrado');
 
-    // Se rejeitado, o síndico pode optar por deletar ou apenas manter bloqueado
-    // Aqui vamos apenas atualizar o status conforme solicitado
     return this.prisma.resident.update({
       where: { id },
       data: { status },
@@ -174,9 +173,44 @@ export class ResidentsService {
     });
   }
 
-  remove(id: string) {
-    return this.prisma.resident.delete({
+  // --- REMOÇÃO SEGURA (Cascata Manual) ---
+  // Substitui o delete simples para evitar erro de Foreign Key
+  async remove(id: string) {
+    const resident = await this.prisma.resident.findUnique({
       where: { id },
+      include: { dependents: true },
+    });
+
+    if (!resident) {
+      throw new NotFoundException('Morador não encontrado');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      
+      // A. Se for um Titular, deleta dependentes e seus dados
+      if (resident.dependents.length > 0) {
+        for (const dep of resident.dependents) {
+           await tx.sale.deleteMany({ where: { residentId: dep.id } });
+           await tx.residentAccount.deleteMany({ where: { residentId: dep.id } });
+        }
+        await tx.resident.deleteMany({
+          where: { ownerId: id },
+        });
+      }
+
+      // B. Deleta dados do próprio usuário alvo
+      await tx.sale.deleteMany({
+        where: { residentId: id },
+      });
+
+      await tx.residentAccount.deleteMany({
+        where: { residentId: id },
+      });
+
+      // C. Deleta o usuário final
+      return tx.resident.delete({
+        where: { id },
+      });
     });
   }
 }
