@@ -115,21 +115,55 @@ export function Residents() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const role = formData.profileType === "ADMIN" ? "ADMIN" : "RESIDENT";
-    const unitRole = formData.profileType === "MEMBER" ? "MEMBER" : "OWNER";
 
-    const payload = { ...formData, role, unitRole };
+    // 1. Traduz o perfil para o formato que o Backend espera
+    let role = "RESIDENT";
+    let unitRole = "MEMBER";
+
+    if (formData.profileType === "ADMIN") {
+      role = "ADMIN";
+      unitRole = "OWNER";
+    } else if (formData.profileType === "OWNER") {
+      role = "RESIDENT";
+      unitRole = "OWNER";
+    }
+
+    // 2. Monta o objeto de envio limpando espaços vazios
+    const payload: any = {
+      name: formData.name.trim(),
+      cpf: formData.cpf.replace(/\D/g, ""), // Envia apenas números
+      email: formData.email.trim() || undefined,
+      phone: formData.phone.trim() || undefined,
+      apartment: formData.apartment.trim(),
+      block: formData.block.trim(),
+      role: role,
+      unitRole: unitRole,
+      status: "ACTIVE", // Morador criado pelo síndico já nasce ativo
+    };
 
     try {
       if (editingId) {
         await api.patch(`/residents/${editingId}`, payload);
-      } else {
+        alert("Morador atualizado!");
+      } // Dentro do else (onde cria novo morador) no Residents.tsx
+      else {
+        // 👇 REMOVA o "...payload, password: ..." e envie APENAS o payload
         await api.post("/residents", payload);
+
+        alert("Morador cadastrado com sucesso!");
       }
+
       setIsModalOpen(false);
-      loadResidents();
-    } catch (error) {
-      alert("Erro ao salvar.");
+      loadResidents(); // Recarrega a lista agrupada
+    } catch (error: any) {
+      // 4. Debug para ver exatamente o que o validador barrou
+      console.error("Erro 400 detalhes:", error.response?.data);
+      const apiMessage = error.response?.data?.message;
+      alert(
+        Array.isArray(apiMessage)
+          ? apiMessage.join(", ")
+          : "Erro ao salvar: Verifique se o CPF já existe."
+      );
     }
   }
 
@@ -305,7 +339,118 @@ export function Residents() {
         </div>
       )}
 
-      {/* ... Modal permanece igual ao seu anterior ... */}
+      {/* --- MODAL DE CADASTRO / EDIÇÃO --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-fade-in overflow-hidden">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">
+                {editingId ? "Editar Perfil" : "Novo Cadastro"}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)}>
+                <X className="text-slate-400 hover:text-slate-600" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* Seletor de Nível de Acesso */}
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <label className="block text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                  <Shield size={16} /> Nível de Acesso
+                </label>
+                <select
+                  className="w-full p-2 rounded-lg border-blue-200 outline-none text-slate-700 bg-white"
+                  value={formData.profileType}
+                  onChange={(e) =>
+                    setFormData({ ...formData, profileType: e.target.value })
+                  }
+                >
+                  <option value="ADMIN">👑 Administrador (Síndico)</option>
+                  <option value="OWNER">🏠 Proprietário (Titular)</option>
+                  <option value="MEMBER">👤 Morador Comum (Dependente)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Nome Completo
+                  </label>
+                  <input
+                    required
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:border-blue-500"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    CPF (Login)
+                  </label>
+                  <input
+                    required
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:border-blue-500"
+                    placeholder="000.000.000-00"
+                    value={formData.cpf}
+                    onChange={(e) =>
+                      setFormData({ ...formData, cpf: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Apartamento
+                  </label>
+                  <input
+                    required
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:border-blue-500"
+                    value={formData.apartment}
+                    onChange={(e) =>
+                      setFormData({ ...formData, apartment: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Bloco
+                  </label>
+                  <input
+                    required
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:border-blue-500"
+                    value={formData.block}
+                    onChange={(e) =>
+                      setFormData({ ...formData, block: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-bold"
+                >
+                  <Save size={18} />{" "}
+                  {editingId ? "Salvar Alterações" : "Concluir Cadastro"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
